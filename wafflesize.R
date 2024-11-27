@@ -325,15 +325,14 @@ grid_data <- data %>%
   ) %>%
   unnest(square_positions)
 
-# Step 3: Adjust positions for categories to ensure compact layout
 category_offsets <- data %>%
   mutate(
-    x_offset = cumsum(lag(ceiling(sqrt(number)), default = 0) * max(square_size) + max(square_size)),
+    x_offset = cumsum(lag(ceiling(sqrt(number)) * max(square_size), default = 0) + max(square_size)),
     y_offset = 0
   )
 
 grid_data <- grid_data %>%
-  left_join(category_offsets, by = "facility_type") %>%
+  left_join(category_offsets, by = "category") %>%
   mutate(
     x = (x - 1) * square_size.x + x_offset,  # Scale and offset x
     y = (y - 1) * square_size.x + y_offset   # Scale y
@@ -364,3 +363,120 @@ ggplot(grid_data) +
   theme_void() +   # Clean up the plot
   labs(fill = "Facility Type")  # Add legend
 
+ggsave(
+  filename = "charts/waffle_chart.svg",   # Output file name
+  plot = last_plot(),             # Plot to save (can replace with a specific ggplot object)
+  device = "svg",                 # Specify SVG as the device
+  width = 10,                     # Width of the output file (in inches)
+  height = 7                      # Height of the output file (in inches)
+)
+
+
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Input data
+data <- data.frame(
+  facility_type = c("A", "B", "C"),
+  number = c(117, 1566, 2779),       # Number of buckets
+  prisoners = c(159000, 1071000, 663000), # Total
+  prisoners_per_facility = c(1358.97, 683.91, 238.57) # Number per bucket
+)
+
+# Step 1: Calculate the size of each square
+data <- data %>%
+  mutate(
+    square_size = sqrt(prisoners / number)  # Size (width/height) of each square
+  )
+
+# Step 2: Generate grid positions for each square
+grid_data <- data %>%
+  rowwise() %>%
+  mutate(
+    square_positions = list(
+      data.frame(
+        x = rep(1:ceiling(sqrt(number)), each = ceiling(sqrt(number))),
+        y = rep(1:ceiling(sqrt(number)), times = ceiling(sqrt(number)))
+      )[1:number, ]  # Limit to the actual number of squares
+    )
+  ) %>%
+  unnest(square_positions)
+
+# Step 3: Adjust positions for categories based on actual grid width
+# Calculate the total grid width for each category
+category_offsets <- data %>%
+  mutate(
+    grid_width = ceiling(sqrt(number)) * square_size,  # Total width of each category's grid
+    x_offset = cumsum(lag(grid_width, default = 0) + max(square_size)), # Properly stagger categories
+    y_offset = 0
+  )
+
+# Join offsets and resolve any potential duplicates
+grid_data <- grid_data %>%
+  left_join(category_offsets, by = "facility_type") %>%
+  mutate(
+    square_size = coalesce(square_size.x, square_size.y),  # Resolve duplicated square_size
+    x = (x - 1) * square_size + x_offset,                 # Scale and offset x
+    y = (y - 1) * square_size + y_offset                  # Scale y
+  ) %>%
+  select(-square_size.x, -square_size.y)  # Remove duplicate columns
+
+# Step 4: Add dimensions for `geom_rect`
+grid_data <- grid_data %>%
+  mutate(
+    xmin = x,                   # Bottom-left x
+    xmax = x + square_size,     # Top-right x
+    ymin = y,                   # Bottom-left y
+    ymax = y + square_size      # Top-right y
+  )
+
+custom_colors <- c("A" = "#05A137", # Red for A
+                   "B" = "#3C7E79", # Blue for B
+                   "C" = "#05ACA8") # Green for C
+
+# Step 5: Plot the waffle chart
+ggplot(grid_data) +
+  geom_rect(
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = ymin,
+      ymax = ymax,
+      fill = facility_type
+    ),
+    color = "white"
+  ) +
+  scale_fill_manual(values = custom_colors) +  # Apply custom colors
+  coord_fixed() +  # Keep square proportions
+  theme_void() +   # Clean up the plot
+  theme(legend.position = "none") +   
+  labs(fill = NULL)  # Add legend
+
+
+# ggplot(grid_data) +
+#   geom_point(
+#     aes(
+#       x = x + square_size / 2,  # Center x for circles
+#       y = y + square_size / 2,  # Center y for circles
+#       color = facility_type
+#     ),
+#     size = 5,                   # Size of circles (adjust as needed)
+#     shape = 21,                 # Circle shape with fill
+#     fill = custom_colors[grid_data$facility_type]  # Fill color
+#   ) +
+#   scale_color_manual(values = custom_colors) +  # Apply custom colors
+#   coord_fixed() +  # Keep proportions
+#   theme_void() +   # Clean up the plot
+#   labs(color = "Facility Type")  # Add legend for categories
+
+# Step 6: Save the waffle chart as an SVG
+if (!dir.exists("charts")) dir.create("charts")  # Ensure the directory exists
+ggsave(
+  filename = "charts/waffle_chart.svg",   # Output file name
+  plot = last_plot(),                    # Plot to save
+  device = "svg",                        # Specify SVG as the device
+  width = 10,                            # Width of the output file (in inches)
+  height = 7                             # Height of the output file (in inches)
+)
