@@ -141,6 +141,16 @@ ggplot(grid_data) +
   #theme(legend.position = "none") +   
   labs(fill = "Bucket Type")  # Add legend
 
+#save
+if (!dir.exists("charts")) dir.create("charts")  # Ensure the directory exists
+ggsave(
+  filename = "charts/waffle_chart.svg",   # Output file name
+  plot = last_plot(),                    # Plot to save
+  device = "svg",                        # Specify SVG as the device
+  width = 10,                            # Width of the output file (in inches)
+  height = 7                             # Height of the output file (in inches)
+)
+
 
 
 # Now with CIRCLES!
@@ -149,22 +159,79 @@ ggplot(grid_data) +
     aes(
       x = x + square_size / 2,  # Center x for circles
       y = y + square_size / 2,  # Center y for circles
-      size = square_size
+      size = square_size,       # Map size to square_size
+      fill = bucket_type        # Map fill color to bucket_type
     ),
-    color = "white", # Size of circles (adjust as needed)
-    shape = 21,                 # Circle shape with fill
-    fill = custom_colors[grid_data$facility_type]  # Fill color
+    color = "white",            # Border color for the points
+    shape = 21                  # Circle shape with a fill
   ) +
-  scale_color_manual(values = custom_colors) +  # Apply custom colors
-  coord_fixed() +  # Keep proportions
-  theme_void()  +  # Clean up the plot
-  theme(legend.position = "none")+ 
-  # labs(color = "Facility Type")  # Add legend for categories
+  scale_fill_manual(values = custom_colors) +  # Map custom colors to bucket_type
+  coord_fixed() +                              # Ensure equal aspect ratio
+  theme_void() +                               # Clean up the plot
+  theme(legend.position = "right") +           # Place the legend (or remove if not needed)
+  labs(fill = "Bucket Type",                   # Add legend title
+       size = "Square Size")                   # Optional: add legend for size
 
-# Step 6: Save the waffle chart as an SVG
+
+#save
 if (!dir.exists("charts")) dir.create("charts")  # Ensure the directory exists
 ggsave(
-  filename = "charts/waffle_chart.svg",   # Output file name
+  filename = "charts/circle_waffle_chart.svg",   # Output file name
+  plot = last_plot(),                    # Plot to save
+  device = "svg",                        # Specify SVG as the device
+  width = 10,                            # Width of the output file (in inches)
+  height = 7                             # Height of the output file (in inches)
+)
+
+
+# Normalize the square_size for the plot
+grid_data <- grid_data %>%
+  mutate(
+    scaled_size = scales::rescale(square_size, to = c(2, 10))  # Scale sizes to a visual range
+  )
+
+# Compute representative sizes for the legend
+legend_sizes <- grid_data %>%
+  group_by(bucket_type) %>%
+  summarize(
+    legend_size = mean(scaled_size),  # Use the scaled size for the legend
+    .groups = "drop"
+  )
+
+# Plot with fixed scaling
+ggplot(grid_data) +
+  geom_point(
+    aes(
+      x = x + square_size / 2,  # Center x for circles
+      y = y + square_size / 2,  # Center y for circles
+      size = scaled_size,       # Use scaled sizes for the plot
+      fill = bucket_type        # Map fill to bucket_type
+    ),
+    color = "white",            # Border color for the points
+    shape = 21                  # Circle shape with a fill
+  ) +
+  scale_fill_manual(
+    values = custom_colors,     # Map colors to bucket_type
+    guide = "legend"            # Ensure the fill legend is included
+  ) +
+  scale_size_identity() +        # Use literal values for size
+  guides(
+    fill = guide_legend(
+      override.aes = list(
+        size = legend_sizes$legend_size  # Use the scaled sizes in the legend
+      ),
+      title = "Bucket Type & Size"
+    )
+  ) +
+  coord_fixed() +                # Keep proportions
+  theme_void() +                 # Simplify the plot
+  theme(legend.position = "right") +  # Position legend
+  labs(fill = "Bucket Type & Size")   # Unified legend title
+
+#save
+if (!dir.exists("charts")) dir.create("charts")  # Ensure the directory exists
+ggsave(
+  filename = "charts/circle_waffle_chart.svg",   # Output file name
   plot = last_plot(),                    # Plot to save
   device = "svg",                        # Specify SVG as the device
   width = 10,                            # Width of the output file (in inches)
